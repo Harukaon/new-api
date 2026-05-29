@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main
-      - beta
-      - dev
     tags:
       - '*'
   workflow_dispatch:
@@ -21,7 +19,7 @@ jobs:
 
     steps:
       - name: Check out
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -32,31 +30,33 @@ jobs:
           GHCR_REPO="${GITHUB_REPOSITORY,,}"
           echo "GHCR_REPO=$GHCR_REPO" >> $GITHUB_ENV
 
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             # Tag push: use tag name (lowercase)
             TAG="${GITHUB_REF#refs/tags/}"
             VERSION="${TAG,,}"
-            echo "TAGS=ghcr.io/${GHCR_REPO}:${VERSION}" >> $GITHUB_OUTPUT
-            echo "VERSION=$VERSION" >> $GITHUB_ENV
+            {
+              echo "TAGS<<EOF"
+              echo "ghcr.io/${GHCR_REPO}:${VERSION}"
+              echo "ghcr.io/${GHCR_REPO}:sha-${SHORT_SHA}"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            echo "VERSION=$VERSION" >> "$GITHUB_ENV"
             echo "Building tag: $TAG -> $VERSION"
 
           elif [[ "${{ github.ref }}" == refs/heads/main ]]; then
-            # Main branch: tag as latest
-            echo "TAGS=ghcr.io/${GHCR_REPO}:latest" >> $GITHUB_OUTPUT
-            echo "VERSION=latest" >> $GITHUB_ENV
-            echo "Building main branch -> latest"
-
-          elif [[ "${{ github.ref }}" == refs/heads/beta ]]; then
-            # Beta branch: tag as beta
-            echo "TAGS=ghcr.io/${GHCR_REPO}:beta" >> $GITHUB_OUTPUT
-            echo "VERSION=beta" >> $GITHUB_ENV
-            echo "Building beta branch -> beta"
-
-          elif [[ "${{ github.ref }}" == refs/heads/dev ]]; then
-            # Dev branch: tag as dev
-            echo "TAGS=ghcr.io/${GHCR_REPO}:dev" >> $GITHUB_OUTPUT
-            echo "VERSION=dev" >> $GITHUB_ENV
-            echo "Building dev branch -> dev"
+            # Main branch/manual dispatch: publish the deployment tag and latest.
+            VERSION="zhongruan0522"
+            {
+              echo "TAGS<<EOF"
+              echo "ghcr.io/${GHCR_REPO}:zhongruan0522"
+              echo "ghcr.io/${GHCR_REPO}:latest"
+              echo "ghcr.io/${GHCR_REPO}:sha-${SHORT_SHA}"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            echo "VERSION=zhongruan0522" >> "$GITHUB_ENV"
+            echo "Building main branch -> zhongruan0522/latest/sha-${SHORT_SHA}"
 
           else
             echo "Unknown ref: ${{ github.ref }}"
@@ -64,16 +64,16 @@ jobs:
           fi
 
           # Write VERSION file for build
-          echo "${{ env.VERSION }}" > VERSION
+          echo "$VERSION" > VERSION
 
           # Write COMMIT file for build (git commit hash injected into Version variable)
           git rev-parse HEAD > COMMIT
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -81,13 +81,13 @@ jobs:
 
       - name: Extract metadata (labels)
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@v5
         with:
           images: |
             ghcr.io/${{ env.GHCR_REPO }}
 
       - name: Build & push (amd64)
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
